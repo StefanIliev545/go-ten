@@ -145,11 +145,16 @@ func InteractWithSmartContract(client *ethclient.Client, wallet wallet.Wallet, c
 		return nil, err
 	}
 
+	price, err := client.SuggestGasPrice(context.Background())
+	if err != nil {
+		price = big.NewInt(params.InitialBaseFee)
+	}
+
 	interactionTx := types.LegacyTx{
 		Nonce:    wallet.GetNonceAndIncrement(),
 		To:       &contractAddress,
 		Gas:      uint64(1_000_000),
-		GasPrice: big.NewInt(params.InitialBaseFee),
+		GasPrice: price,
 		Data:     contractInteractionData,
 	}
 	signedTx, err := wallet.SignTransaction(&interactionTx)

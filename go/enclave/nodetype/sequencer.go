@@ -225,6 +225,12 @@ func (s *sequencer) produceBatch(
 	batchTime uint64,
 	failForEmptyBatch bool,
 ) (*components.ComputedBatch, error) {
+	parentHeader, err := s.storage.FetchBatchHeader(ctx, headBatch)
+	if err == nil {
+		ethHeader := common.ConvertBatchHeaderToHeader(parentHeader)
+		s.settings.BaseFee = calcNextBaseFee(s.chainConfig, ethHeader)
+	}
+
 	cb, err := s.batchProducer.ComputeBatch(ctx,
 		&components.BatchExecutionContext{
 			BlockPtr:      l1Hash,
@@ -249,6 +255,7 @@ func (s *sequencer) produceBatch(
 	if err := s.StoreExecutedBatch(ctx, cb.Batch, cb.TxExecResults); err != nil {
 		return nil, fmt.Errorf("2. failed storing batch. Cause: %w", err)
 	}
+	s.settings.BaseFee = calcNextBaseFee(s.chainConfig, common.ConvertBatchHeaderToHeader(cb.Batch.Header))
 
 	s.logger.Info("Produced new batch", log.BatchHashKey, cb.Batch.Hash(),
 		"height", cb.Batch.Number(), "numTxs", len(cb.Batch.Transactions), log.BatchSeqNoKey, cb.Batch.SeqNo(), "parent", cb.Batch.Header.ParentHash)
