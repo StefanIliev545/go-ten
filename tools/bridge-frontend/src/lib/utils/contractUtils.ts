@@ -1,7 +1,7 @@
 import { showToast } from "@/src/components/ui/use-toast";
 import { IErrorMessages, ToastType, TransactionStep } from "@/src/types";
-import { StandardMerkleTree } from "@openzeppelin/merkle-tree";
 import { ethers } from "ethers";
+import { decode as rlpDecode } from "@ethersproject/rlp";
 import { handleStorage } from "../utils";
 import {
   addPendingBridgeTransaction,
@@ -77,34 +77,42 @@ const extractEventDataStep = async (
   return { valueTransferEventData, block };
 };
 
-const constructMerkleTreeStep = async (
+const getCrossChainProofStep = async (
   txHash: string,
-  valueTransferEventData: ethers.utils.LogDescription,
-  block: any
+  provider: ethers.providers.JsonRpcProvider,
+  valueTransferEventData: ethers.utils.LogDescription
 ) => {
-  const { tree, proof } = constructMerkleTree(
-    JSON.parse(atob(block?.crossChainTree)),
-    ethers.utils.keccak256(
-      new ethers.utils.AbiCoder().encode(
-        ["address", "address", "uint256", "uint64"],
-        [
-          valueTransferEventData?.args.sender,
-          valueTransferEventData?.args.receiver,
-          valueTransferEventData?.args.amount.toString(),
-          valueTransferEventData?.args.sequence.toString(),
-        ]
-      )
+  const msgHash = ethers.utils.keccak256(
+    new ethers.utils.AbiCoder().encode(
+      ["address", "address", "uint256", "uint64"],
+      [
+        valueTransferEventData?.args.sender,
+        valueTransferEventData?.args.receiver,
+        valueTransferEventData?.args.amount.toString(),
+        valueTransferEventData?.args.sequence.toString(),
+      ]
     )
   );
 
-  // update pending txn after tree construction
+  const { Proof, Root } = await provider.send(
+    "ten_getCrossChainProof",
+    ["v", msgHash]
+  );
+
+  if (!Proof || !Root) {
+    throw new Error("Failed to fetch cross chain proof");
+  }
+
+  const decoded = rlpDecode(Proof) as Uint8Array[];
+  const proof = decoded.map((p) => ethers.utils.hexlify(p));
+
   updatePendingBridgeTransaction(txHash, {
     resumeStep: TransactionStep.GasEstimation,
-    root: tree.root,
+    root: Root,
     proof,
   });
 
-  return { tree, proof };
+  return { root: Root, proof };
 };
 
 // estimate gas (with re-estimation if needed)
@@ -227,16 +235,6 @@ const getTransactionReceipt = async (
   ]);
 };
 
-const constructMerkleTree = (
-  leafEntries: [string, string][],
-  msgHash: string
-) => {
-  showToast(ToastType.INFO, "Constructing Merkle tree");
-  const tree = StandardMerkleTree.of(leafEntries, ["string", "bytes32"]);
-  const proof = tree.getProof(["v", msgHash]);
-
-  return { tree, proof };
-};
 
 const estimateGas = async (
   receiver: string,
@@ -399,7 +397,6 @@ const estimateGasWithTimeout = async (
 };
 
 export {
-  constructMerkleTree,
   estimateGasWithTimeout,
   extractAndProcessValueTransfer,
   estimateAndPopulateTx,
@@ -407,7 +404,7 @@ export {
   sendTransactionStep,
   confirmTransactionStep,
   extractEventDataStep,
-  constructMerkleTreeStep,
+  getCrossChainProofStep,
   estimateGasStep,
   submitRelayTransactionStep,
 };

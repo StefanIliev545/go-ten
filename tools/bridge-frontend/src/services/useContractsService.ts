@@ -16,7 +16,7 @@ import useWalletStore from "../stores/wallet-store";
 import { currentNetwork } from "../lib/utils";
 import {
   confirmTransactionStep,
-  constructMerkleTreeStep,
+  getCrossChainProofStep,
   estimateGasStep,
   extractEventDataStep,
   sendTransactionStep,
@@ -142,7 +142,6 @@ export const useContractsService = () => {
         txReceipt,
         valueTransferEventData,
         block,
-        tree,
         root,
         proof,
         gasLimit,
@@ -247,18 +246,18 @@ export const useContractsService = () => {
             break;
 
           case TransactionStep.MerkleTreeConstruction:
-            ({ tree, proof } = await constructMerkleTreeStep(
+            ({ root, proof } = await getCrossChainProofStep(
               txHash!,
-              valueTransferEventData!,
-              block
+              provider,
+              valueTransferEventData!
             ));
 
-            if (!tree || !proof) {
-              return handleError(null, "Error constructing Merkle tree");
+            if (!root || !proof) {
+              return handleError(null, "Error retrieving cross chain proof");
             }
 
             currentStep = TransactionStep.GasEstimation;
-            showToast(ToastType.INFO, "Merkle tree constructed");
+            showToast(ToastType.INFO, "Cross chain proof retrieved");
             updateBridgePendingTransactions();
             break;
 
@@ -268,7 +267,7 @@ export const useContractsService = () => {
               txHash!,
               valueTransferEventData!,
               proof,
-              root || tree!.root
+              root
             );
 
             if (!gasLimit) {
@@ -287,7 +286,7 @@ export const useContractsService = () => {
               l1Provider,
               managementContract,
               valueTransferEventData,
-              root || tree!.root,
+              root,
               proof,
               gasLimit!
             )) as ethers.providers.TransactionReceipt;
