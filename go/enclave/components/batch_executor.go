@@ -551,6 +551,7 @@ func (executor *batchExecutor) execResult(ec *BatchExecutionContext) (*ComputedB
 		return nil, fmt.Errorf("failed to commit trieDB. Cause: %w", err)
 	}
 	batch.Header.Root = rootHash
+	batch.Header.GasUsed = *ec.usedGas
 
 	batch.ResetHash()
 
